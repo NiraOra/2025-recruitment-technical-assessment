@@ -105,12 +105,11 @@ def create_entry():
 @app.route('/summary', methods=['GET'])
 def summary():
     recipe_name = request.args.get('name')
-    print(f"Requested recipe: {recipe_name}")
-
-    # 1. Recipe is in the cookbook
+    
     recipe = cookbook.get(recipe_name)
+    # 1. If there is no recipe or the recipe is not adhering to the type of Recipe
+    # then it is not valid
     if recipe is None or not isinstance(recipe, Recipe):
-        print(f"Recipe '{recipe_name}' not found in cookbook.")
         return jsonify({"error": "Recipe not found or is not a valid recipe"}), 400
 
     # Recursive function to calculate cook time and ingredient list
@@ -119,33 +118,39 @@ def summary():
             total_cook_time = 0
             ingredients_map = {}
 
+            # If there is nothing in the recipe, return empty
+            if not recipe.required_items:
+                return 0, {} 
+
             for item in recipe.required_items:
                 item_name = item.name
                 quantity = item.quantity * multiplier
 
                 entry = cookbook.get(item_name)
                 if entry is None:
-                    return None, None  # Unknown item found
+                    print(f"Unknown item found: {item_name}")
+                    return None, None 
 
                 if isinstance(entry, Ingredient):
                     total_cook_time += entry.cook_time * quantity
                     ingredients_map[item_name] = ingredients_map.get(item_name, 0) + quantity
-
                 elif isinstance(entry, Recipe):
                     sub_cook_time, sub_ingredients = get_recipe_summary(entry, quantity)
                     if sub_cook_time is None:
-                        return None, None  # Unknown item found
+                        return None, None 
 
                     total_cook_time += sub_cook_time
                     for ing, qty in sub_ingredients.items():
                         ingredients_map[ing] = ingredients_map.get(ing, 0) + qty
 
-            return total_cook_time, ingredients_map
-        
+                return total_cook_time, ingredients_map
         except Exception as e:
-            print(f"Couldn't get recipe summary :( ): {str(e)}")
-            return None, None
+                print(f"Couldn't get recipe summary :(?): {str(e)}")
+                return None, None
 
+    # Use the total cooking time and ingredients map to get the recipe summary
+    # If any errors are returned (aka unknown items) then it will throw an error
+    # Otherwise, return the summary list
     total_cook_time, ingredients_map = get_recipe_summary(recipe)
 
     if total_cook_time is None or ingredients_map is None:
