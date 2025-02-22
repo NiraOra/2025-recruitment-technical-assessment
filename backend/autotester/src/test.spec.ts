@@ -155,6 +155,7 @@ describe("Task 3", () => {
       expect(resp2.status).toBe(200);
 
       const resp3 = await getTask3("Skibidi");
+      console.log(resp3);
       expect(resp3.status).toBe(200);
     });
   });

@@ -104,61 +104,60 @@ def create_entry():
 # Endpoint that returns a summary of a recipe that corresponds to a query name
 @app.route('/summary', methods=['GET'])
 def summary():
-	recipe_name = request.args.get('name')
+    recipe_name = request.args.get('name')
+    print(f"Requested recipe: {recipe_name}")
 
-	# Check if the recipe exists in the cookbook
-	if recipe_name not in cookbook or not isinstance(cookbook[recipe_name], Recipe):
-		return 'Recipe not found or is not a recipe', 400
+    # 1. Recipe is in the cookbook
+    recipe = cookbook.get(recipe_name)
+    if recipe is None or not isinstance(recipe, Recipe):
+        print(f"Recipe '{recipe_name}' not found in cookbook.")
+        return jsonify({"error": "Recipe not found or is not a valid recipe"}), 400
 
-	recipe = cookbook[recipe_name]
+    # Recursive function to calculate cook time and ingredient list
+    def get_recipe_summary(recipe, multiplier=1):
+        try:
+            total_cook_time = 0
+            ingredients_map = {}
 
-	# Recursively get total cook time and base ingredients
-	def get_recipe_summary(recipe, multiplier=1):
-		total_cook_time = 0
-		ingredients_map = {}
+            for item in recipe.required_items:
+                item_name = item.name
+                quantity = item.quantity * multiplier
 
-		for item in recipe.required_items:
-			item_name = item.name
-			quantity = item.quantity * multiplier
+                entry = cookbook.get(item_name)
+                if entry is None:
+                    return None, None  # Unknown item found
 
-			if item_name not in cookbook:
-				return None, None  # Recipe contains an unknown item
-	
-			entry = cookbook[item_name]
+                if isinstance(entry, Ingredient):
+                    total_cook_time += entry.cook_time * quantity
+                    ingredients_map[item_name] = ingredients_map.get(item_name, 0) + quantity
 
-			if isinstance(entry, Ingredient):
-				total_cook_time += entry.cook_time * quantity
-				if item_name in ingredients_map:
-					ingredients_map[item_name] += quantity
-				else:
-					ingredients_map[item_name] = quantity
+                elif isinstance(entry, Recipe):
+                    sub_cook_time, sub_ingredients = get_recipe_summary(entry, quantity)
+                    if sub_cook_time is None:
+                        return None, None  # Unknown item found
 
-			elif isinstance(entry, Recipe):
-				sub_cook_time, sub_ingredients = get_recipe_summary(entry, quantity)
-				if sub_cook_time is None:
-					return None, None  # Found an unknown item
+                    total_cook_time += sub_cook_time
+                    for ing, qty in sub_ingredients.items():
+                        ingredients_map[ing] = ingredients_map.get(ing, 0) + qty
 
-				total_cook_time += sub_cook_time
-				for ing, qty in sub_ingredients.items():
-					if ing in ingredients_map:
-						ingredients_map[ing] += qty
-					else:
-						ingredients_map[ing] = qty
+            return total_cook_time, ingredients_map
+        
+        except Exception as e:
+            print(f"Couldn't get recipe summary :( ): {str(e)}")
+            return None, None
 
-		return total_cook_time, ingredients_map
+    total_cook_time, ingredients_map = get_recipe_summary(recipe)
 
-	total_cook_time, ingredients_map = get_recipe_summary(recipe)
+    if total_cook_time is None or ingredients_map is None:
+        return jsonify({"error": "Recipe contains unknown items"}), 400
 
-	if total_cook_time is None:
-		return 'Recipe contains unknown items', 400
+    ingredients_list = [{"name": name, "quantity": quantity} for name, quantity in ingredients_map.items()]
 
-	ingredients_list = [{"name": name, "quantity": quantity} for name, quantity in ingredients_map.items()]
-
-	return jsonify({
-		"name": recipe.name,
-		"cookTime": total_cook_time,
-		"ingredients": ingredients_list
-	}), 200
+    return jsonify({
+        "name": recipe.name,
+        "cookTime": total_cook_time,
+        "ingredients": ingredients_list
+    }), 200
 
 
 # =============================================================================
